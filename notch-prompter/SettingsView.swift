@@ -705,37 +705,37 @@ struct KeyboardTabView: View {
                         ShortcutRow(
                             icon: "play.fill",
                             title: "Play / Pause",
-                            shortcut: "⌃ + ⌥ + p"
+                            shortcut: "⌘ + ⌥ + p"
                         )
 
                         ShortcutRow(
                             icon: "eye.fill",
                             title: "Show / Hide Prompter",
-                            shortcut: "⌃ + ⌥ + h"
+                            shortcut: "⌘ + ⌥ + h"
                         )
 
                         ShortcutRow(
                             icon: "arrow.left",
                             title: "Decrease Speed",
-                            shortcut: "⌃ + ⌥ + ←"
+                            shortcut: "⌘ + ⌥ + ←"
                         )
 
                         ShortcutRow(
                             icon: "arrow.right",
                             title: "Increase Speed",
-                            shortcut: "⌃ + ⌥ + →"
+                            shortcut: "⌘ + ⌥ + →"
                         )
 
                         ShortcutRow(
                             icon: "arrow.up",
                             title: "Scroll Up",
-                            shortcut: "⌃ + ⌥ + ↑"
+                            shortcut: "⌘ + ⌥ + ↑"
                         )
 
                         ShortcutRow(
                             icon: "arrow.down",
                             title: "Scroll Down",
-                            shortcut: "⌃ + ⌥ + ↓"
+                            shortcut: "⌘ + ⌥ + ↓"
                         )
                     }
 

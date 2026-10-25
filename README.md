@@ -14,7 +14,7 @@ Perfect for quick videos or keeping important text visible while you work.
 
 ## Features
 - Always on top
-- **Not visible on screen recording apps**
+- **Hide from screen recordings** (best effort — not a guarantee on every capture tool)
 - Voice activation
 - Minimalist design
 - Quick options
@@ -29,6 +29,56 @@ Perfect for quick videos or keeping important text visible while you work.
 
 ## Translations
 Translations are made via DeepL, so they might be incorrect in some places, but feel free to [suggest better translations!](https://simplelocalize.io/suggestions/?id=f1f11f9305dc44a2872b6a154dea6edc).
+
+
+## Build from source (macOS)
+
+NotchPrompter is a native macOS app. It requires **macOS 14 or later** and
+Apple's **Xcode Command Line Tools**. It cannot run on Linux.
+
+### Prerequisites
+
+1. Install the Command Line Tools (one-time):
+
+   ```sh
+   xcode-select --install
+   ```
+
+2. Confirm the Swift toolchain is available:
+
+   ```sh
+   swift --version
+   ```
+
+### Build and run
+
+The easiest way is to double-click **`Build NotchPrompter.command`** in Finder.
+It compiles a release build with SwiftPM, assembles `build/NotchPrompter.app`,
+ad-hoc codesigns it locally, zips it, reveals it in Finder, and then opens the
+app. The first time, macOS may ask you to confirm opening the file.
+
+Or run it from a terminal:
+
+```sh
+./scripts/build-mac.sh
+open "build/NotchPrompter.app"
+```
+
+The finished bundle is `build/NotchPrompter.app`, and `build/NotchPrompter.zip`
+contains the same app for sharing.
+
+### What the build produces
+
+- **Native architecture only** (`arm64` or `x86_64` for the machine it is
+  built on — not a universal binary).
+- **Unsigned / not notarized**: the bundle is ad-hoc codesigned so it runs
+  locally, but it is not signed with a Developer ID and is not notarized.
+  If macOS blocks the app on first launch, right-click it in Finder and
+  choose **Open**, then confirm.
+- The `Info.plist` sets `LSUIElement` (menu bar app), `LSMinimumSystemVersion`
+  `14.0`, the microphone usage description used by voice activation, and the
+  local bundle id `local.notchprompter.app`.
+
 
 
 ## Star History

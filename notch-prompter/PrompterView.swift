@@ -132,9 +132,11 @@ class PrompterHostingView: NSView {
     }
 
     private func handleHoverChange(hovering: Bool) {
+        viewModel.isHovering = hovering
         guard viewModel.pauseOnHover else {
             isHovering = false
             wasPlayingBeforeHover = false
+            viewModel.isHovering = false
             return
         }
 
@@ -150,6 +152,7 @@ class PrompterHostingView: NSView {
             }
             isHovering = false
             wasPlayingBeforeHover = false
+            viewModel.isHovering = false
         }
     }
 }
@@ -169,7 +172,7 @@ struct PrompterContentView: View {
                     movingText
                         .frame(width: geo.size.width, alignment: .center)
                         .offset(y: -viewModel.offset)
-                        .background(HeightReader(height: $contentHeight))
+                        .background(HeightReader(height: $contentHeight, viewModel: viewModel))
                     Spacer(minLength: 0)
                 }
                 .clipped()
@@ -287,9 +290,13 @@ struct PrompterContentView: View {
 //        .opacity(viewModel.opacity) TODO: it would be better to control background and text opacity separatly, or just background opacity
         .ignoresSafeArea()
         .onHover { hovering in
+            guard viewModel.showHoverControls else { return }
             withAnimation {
                 showControls = hovering
             }
+        }
+        .onChange(of: viewModel.showHoverControls) { _, enabled in
+            if !enabled { showControls = false }
         }
     }
 
@@ -381,12 +388,17 @@ struct PrompterContentView: View {
 // MARK: - Height reader
 private struct HeightReader: View {
     @Binding var height: CGFloat
+    let viewModel: PrompterViewModel
     var body: some View {
         GeometryReader { proxy in
             Color.clear
-                .onAppear { height = proxy.size.height }
+                .onAppear {
+                    height = proxy.size.height
+                    viewModel.updateContentHeight(proxy.size.height)
+                }
                 .onChange(of: proxy.size) { _, newSize in
                     height = newSize.height
+                    viewModel.updateContentHeight(newSize.height)
                 }
         }
     }

@@ -19,13 +19,7 @@ struct NotchPrompterApp: App {
         MenuBarExtra {
             MenuContent(viewModel: appDelegate.viewModel)
         } label: {
-            let image: NSImage = {
-                $0.size.height = 12
-                $0.size.width = 12
-                return $0
-            }(NSImage(named: "MenuBarIcon")!)
-
-            Image(nsImage: image)
+            Image(systemName: "text.alignleft")
                 .renderingMode(.template)
         }
         .menuBarExtraStyle(.menu)
@@ -39,6 +33,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         prompterWindow = PrompterWindow(viewModel: viewModel)
         NSApp.setActivationPolicy(.accessory)
+        if viewModel.isPrompterVisible {
+            prompterWindow.show()
+        }
     }
 }
 

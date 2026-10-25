@@ -4,7 +4,7 @@ import CoreVideo
 import AVFoundation
 import Accelerate
 import SwiftUI
-import HotKey
+import PrompterCore
 
 final class PrompterViewModel: ObservableObject {
 
@@ -34,8 +34,10 @@ final class PrompterViewModel: ObservableObject {
     By aligning our goals and maintaining a clear vision, we can build products that not only solve real problems but also inspire and empower the people who use them.
     Let’s continue pushing boundaries and striving for excellence.
     """
-    @Published var isPlaying: Bool = false
-    @Published var offset: CGFloat = 0
+    @Published private(set) var isPlaying: Bool = false
+    @Published var offset: CGFloat = 0 {
+        didSet { scrollEngine.seek(to: Double(offset)) }
+    }
     @Published var speed: Double = 12.0
     @Published var fontSize: Double = 10.0
     @Published var lineHeight: Double = 8.0
@@ -65,16 +67,14 @@ final class PrompterViewModel: ObservableObject {
 
 
     private var timerCancellable: AnyCancellable?
-    private var lastTick: CFTimeInterval?
+    private var scrollEngine = ScrollEngine()
     private var cancellables: Set<AnyCancellable> = []
-
-    // MARK: Global keyboard shortcuts
-    private var playPauseHotKey: HotKey?
-    private var showHideHotKey: HotKey?
-    private var increaseSpeedHotKey: HotKey?
-    private var decreaseSpeedHotKey: HotKey?
-    private var scrollUpHotKey: HotKey?
-    private var scrollDownHotKey: HotKey?
+    private var audioCancellable: AnyCancellable?
+    private var keyboardShortcuts: GlobalKeyboardShortcuts?
+    @Published var isHovering: Bool = false
+    @Published private(set) var audioLevel: Float = 0
+    @Published var audioError: String?
+    private var lastSpeechTime: TimeInterval = -.infinity
 
     var audioMonitor: AudioMonitor?
     @Published var showMicrophoneAlert: Bool = false
@@ -115,15 +115,22 @@ final class PrompterViewModel: ObservableObject {
     init() {
         loadSettings()
         observeSettingsChanges()
-//        setupKeyboardShortcuts()
+        timerCancellable = CADisplayLinkPublisher()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] timestamp in
+                self?.tick(current: timestamp)
+            }
+
         $voiceActivation
             .removeDuplicates()
             .sink { [weak self] enabled in
-                guard let self = self else { return }
+                guard let self else { return }
                 if enabled {
                     self.requestMicrophoneAccessAndStart()
                 } else {
                     self.audioMonitor?.stopMonitoring()
+                    self.audioCancellable = nil
+                    self.audioLevel = 0
                 }
             }
             .store(in: &cancellables)
@@ -131,13 +138,11 @@ final class PrompterViewModel: ObservableObject {
         $enableGlobalKeyboardShortcuts
             .removeDuplicates()
             .sink { [weak self] enabled in
-                guard let self = self else { return }
+                guard let self else { return }
                 if enabled {
-                    print("Global shortcuts enabled")
-                    self.registerGlobalKeyboardShortcuts()
+                    self.keyboardShortcuts = GlobalKeyboardShortcuts(viewModel: self)
                 } else {
-                    print("Global shortcuts disabled")
-                    self.unregisterGlobalKeyboardShortcuts()
+                    self.keyboardShortcuts = nil
                 }
             }
             .store(in: &cancellables)
@@ -168,54 +173,50 @@ final class PrompterViewModel: ObservableObject {
             break
         }
     }
-
-
-    func monitorAudio(){
-        if(audioMonitor == nil){
+    func monitorAudio() {
+        if audioMonitor == nil {
             audioMonitor = AudioMonitor()
         }
 
-        audioMonitor!.$rmsLevel
+        audioCancellable = audioMonitor?.$rmsLevel
             .receive(on: DispatchQueue.main)
             .sink { [weak self] rmsLevel in
-                guard let self = self else { return }
-                let detected = rmsLevel > self.audioThreshold
-//                print("Audio monitor - activation: \(detected) rms: \(rmsLevel) threshold: \(self.audioThreshold)")
-                if detected {
-                    self.lastTick = nil
+                guard let self else { return }
+                self.audioLevel = rmsLevel
+                if rmsLevel > self.audioThreshold {
+                    self.lastSpeechTime = ProcessInfo.processInfo.systemUptime
+                    if !self.isPlaying { self.play() }
                 }
-
             }
-            .store(in: &cancellables)
 
-        audioMonitor!.startMonitoring()
+        audioMonitor?.startMonitoring()
     }
-
 
     // MARK: Play/Pause
     func play() {
-        lastTick = nil
-        offset = 0
-        isPlaying = true
+        scrollEngine.play()
+        offset = CGFloat(scrollEngine.offset)
+        isPlaying = scrollEngine.isPlaying
     }
 
     func pause() {
+        scrollEngine.pause()
         isPlaying = false
-        offset = 0
     }
 
     func reset() {
+        scrollEngine.reset()
+        offset = 0
         isPlaying = false
-        lastTick = nil
     }
 
     func scrollBack() {
-        offset = max(127, offset - backScrollAmount)
+        offset = max(0, offset - backScrollAmount)
     }
 
     // MARK: Manual Scroll Control
     func scrollUp() {
-        offset = max(127, offset - manualScrollAmount)
+        offset = max(0, offset - manualScrollAmount)
     }
 
     func scrollDown() {
@@ -224,7 +225,7 @@ final class PrompterViewModel: ObservableObject {
 
     // MARK: Speed Control
     func increaseSpeed() {
-        speed = min(40, speed + speedIncrement)
+        speed = min(100, speed + speedIncrement)
     }
 
     func decreaseSpeed() {
@@ -232,17 +233,12 @@ final class PrompterViewModel: ObservableObject {
     }
 
     private func tick(current: CFTimeInterval) {
-        guard isPlaying else { return }
-
-        let dt: CFTimeInterval
-        if let last = lastTick {
-            dt = current - last + ((1.0 / 180.0) + current)
-        } else {
-            dt = -1
+        let canScroll = !isHovering || !pauseOnHover
+        scrollEngine.tick(at: current, speed: speed, canScroll: canScroll)
+        offset = CGFloat(scrollEngine.offset)
+        if isPlaying != scrollEngine.isPlaying {
+            isPlaying = scrollEngine.isPlaying
         }
-        lastTick = current
-
-        offset += CGFloat(speed) * CGFloat(dt)
     }
 
     // MARK: Settings persistence
@@ -355,6 +351,11 @@ final class PrompterViewModel: ObservableObject {
         defaults.set(manualScrollAmount, forKey: Keys.manualScrollAmount)
     }
 
+    func updateContentHeight(_ height: CGFloat) {
+        scrollEngine.setMaximumOffset(max(0, Double(height - prompterHeight)))
+        offset = CGFloat(scrollEngine.offset)
+    }
+
     // MARK: Connector for display refresh
     private final class CADisplayLinkProxy {
         let subject = PassthroughSubject<CFTimeInterval, Never>()
@@ -422,7 +423,7 @@ final class PrompterViewModel: ObservableObject {
     }
 }
 // MARK: - Font.Design Extension for UserDefaults
-extension Font.Design: @retroactive RawRepresentable {
+extension Font.Design: RawRepresentable {
     public init?(rawValue: String) {
         switch rawValue {
         case "default": self = .default
